@@ -33,11 +33,10 @@ bahn_search <- function(from,
                         start = Sys.time(),
                         end = start + 120,
                         parse = TRUE) {
-
+  
   if (is.character(start)) start <- lubridate::ymd_hms(start)
   if (is.character(end)) end <- lubridate::ymd_hms(end)
-
-
+  
   # TODO: export more parameters
   req_body <- list(
     abfahrtsHalt = from,
@@ -56,63 +55,55 @@ bahn_search <- function(from,
     bikeCarriage = FALSE,
     reservierungsKontingenteVorhanden = FALSE
   )
-
+  
   res <- list()
   page <- 1
   cli::cli_progress_bar("Getting results")
-
+  
   resp <- get_results(req_body)
   res[[page]] <- resp
-
+  
   while (get_last(resp) < end) {
     cli::cli_progress_update()
     page <- page + 1
     req_body[["pagingReference"]] <- resp$verbindungReference$later
     resp <- get_results(req_body)
-
+    
     res[[page]] <- resp
   }
-
+  
   if (parse) {
     return(parse_response(res))
   } else {
     return(res)
   }
-
+  
 }
 
-
-
-#' Search Station
-#'
-#' Search the station id using a query, returns n_res options in a tibble
-#'
-#' @param q character string, query to search for station.
-#' @param n_res number of results to return (integer or character).
-#' @return tibble, containing station name and id
-#' @export
-#'
-#' @examples
-#' search_station("Frankfurt")
 search_station <- function(q, n_res = 10L) {
-  resp <- httr2::request("https://www.bahn.de/web/api/reiseloesung/orte") |>
-    httr2::req_url_query(
-      suchbegriff = q,
-      typ = "ALL",
-      limit = as.character(n_res)
-    ) |>
-    httr2::req_headers(
-      "user-agent" = "bahnr"
-    ) |>
-    httr2::req_throttle(5 / 60) |>
-    httr2::req_perform() |>
-    httr2::resp_body_json()
-
-  purrr::map(resp, function(r) {
+  resp <- httr2::request("https://www.bahn.de/web/api/reiseloesung/orte")
+  
+  resp <- httr2::req_url_query(
+    resp,
+    suchbegriff = q,
+    typ = "ALL",
+    limit = as.character(n_res)
+  )
+  
+  resp <- httr2::req_headers(resp, "user-agent" = "bahnr")
+  resp <- httr2::req_throttle(resp, 5 / 60)
+  resp <- httr2::req_perform(resp)
+  
+  resp <- httr2::resp_body_json(resp)
+  
+  station_list <- purrr::map(resp, function(r) {
     tibble::tibble(
       name = purrr::pluck(r, "name"),
       id = purrr::pluck(r, "id")
     )
-  }) |>
-    dplyr::bind_rows()
+  })
+  
+  station_df <- dplyr::bind_rows(station_list)
+  
+  return(station_df)
 }
